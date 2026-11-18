@@ -115,6 +115,9 @@
   .pl .sc{font-size:22px;font-weight:900;color:var(--accent)}
   .pl .tm{font-size:12px;color:var(--muted);width:48px;text-align:right}
   .pl.top{background:linear-gradient(90deg,rgba(249,199,79,.25),var(--card))}
+  .tools{display:flex;justify-content:center;gap:10px;margin:0 0 18px;flex-wrap:wrap}
+  .tool{background:var(--accent);color:#2b2233;border:none;border-radius:12px;padding:12px 18px;font:inherit;font-weight:800;font-size:14px;cursor:pointer}
+  .tool.ghost{background:transparent;color:var(--muted);border:2px solid rgba(255,255,255,.2)}
   .empty{text-align:center;color:var(--muted);margin-top:40px;line-height:1.6}
   .stats{display:flex;justify-content:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
   .stat{background:var(--card);border-radius:14px;padding:10px 16px;text-align:center;font-size:12px;color:var(--muted);font-weight:700}
@@ -174,6 +177,10 @@
       <div class="live"><i></i><span id="hostInfo">Waiting for players…</span></div>
     </div>
     <div class="stats" id="stats"></div>
+    <div class="tools">
+      <button class="tool" id="dlBtn" type="button">Download results (Excel / CSV)</button>
+      <button class="tool ghost" id="clearBtn" type="button">Clear saved results</button>
+    </div>
     <div class="board" id="board"></div>
   </section>
 
@@ -276,8 +283,13 @@ async function sendScore(score){
 /* ---------- host scoreboard ---------- */
 function esc(t){ return String(t).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
+const BACKUP = "weirdlaws-scores-backup-v1";
+let lastList = [];
+function loadBackup(){ try{ return JSON.parse(localStorage.getItem(BACKUP)) || {}; }catch(e){ return {}; } }
+function saveBackup(p){ try{ localStorage.setItem(BACKUP, JSON.stringify(p)); }catch(e){} }
+
 async function refreshBoard(){
-  let players = {};
+  let players = loadBackup();
   try{
     const r = await fetch(CHANNEL + "/json?poll=1&since=all");
     const txt = await r.text();
@@ -295,7 +307,9 @@ async function refreshBoard(){
     $("hostInfo").textContent = "Connection problem, retrying…";
     return;
   }
+  saveBackup(players);
   const list = Object.values(players).sort((x,y)=> y.s-x.s || x.t-y.t);
+  lastList = list;
   $("hostInfo").textContent = list.length ? "Live · " + list.length + " player" + (list.length>1?"s":"") : "Waiting for players…";
   if(!list.length){
     $("stats").innerHTML = "";
@@ -319,7 +333,43 @@ async function refreshBoard(){
   }).join("");
 }
 
+function downloadCSV(){
+  const list = lastList.length ? lastList : Object.values(loadBackup()).sort((x,y)=> y.s-x.s || x.t-y.t);
+  const head = ["Rank","Name","Score (/6)","Finished at"];
+  LAWS.forEach((q,k)=>{ head.push("Law "+(k+1)+" answer"); head.push("Law "+(k+1)+" correct?"); });
+  const rows = [head];
+  list.forEach((p,k)=>{
+    const d = new Date(p.t*1000);
+    const r = [k+1, p.n, p.s, d.toLocaleDateString()+" "+d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})];
+    LAWS.forEach((q,j)=>{
+      const a = p.a[j];
+      r.push(a===undefined ? "" : (a===1 ? "TRUE" : "FALSE"));
+      r.push(a===undefined ? "" : ((a===1)===q.answer ? "yes" : "no"));
+    });
+    rows.push(r);
+  });
+  const csv = "\ufeff" + rows.map(r=> r.map(v=> '"'+String(v).replace(/"/g,'""')+'"').join(";")).join("\r\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "weird-laws-results-" + new Date().toISOString().slice(0,10) + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 2000);
+}
+
+let clearArmed = false;
+function clearBackup(){
+  const b = $("clearBtn");
+  if(!clearArmed){ clearArmed = true; b.textContent = "Click again to confirm"; setTimeout(()=>{ clearArmed=false; b.textContent="Clear saved results"; }, 4000); return; }
+  clearArmed = false; b.textContent = "Clear saved results";
+  try{ localStorage.removeItem(BACKUP); }catch(e){}
+  lastList = [];
+  refreshBoard();
+}
+
 function startHost(){
+  $("dlBtn").onclick = downloadCSV;
+  $("clearBtn").onclick = clearBackup;
   document.querySelector("main").classList.add("wide");
   show("s-host");
   refreshBoard();
