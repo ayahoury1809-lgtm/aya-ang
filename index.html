@@ -132,7 +132,7 @@
 
   <!-- WELCOME -->
   <section class="screen active" id="s-welcome">
-    <div class="globe">🌍</div>
+    <div class="globe" id="globe" style="cursor:default;user-select:none;-webkit-user-select:none;touch-action:manipulation">🌍</div>
     <h1>Weird Laws<br><span>Around the World</span></h1>
     <p class="sub">6 crazy laws. True or false?<br>Answer each one when we show it on screen!</p>
     <p class="credits">Marjana · Aya · Lisa — M2 MRQP</p>
@@ -367,7 +367,9 @@ function clearBackup(){
   refreshBoard();
 }
 
+let hostStarted = false;
 function startHost(){
+  if(hostStarted) return; hostStarted = true;
   $("dlBtn").onclick = downloadCSV;
   $("clearBtn").onclick = clearBackup;
   document.querySelector("main").classList.add("wide");
@@ -411,6 +413,14 @@ $("nextBtn").onclick = ()=>{
   else { state.i = LAWS.length; save(); renderResult(); }
 };
 
+
+// secret entry: double-click / double-tap the globe on the welcome screen
+let lastTap = 0;
+$("globe").addEventListener("click", ()=>{
+  const now = Date.now();
+  if(now - lastTap < 450){ lastTap = 0; location.hash = "scores"; startHost(); }
+  else lastTap = now;
+});
 
 // host mode: open the page with #scores
 if(location.hash === "#scores"){ startHost(); }
